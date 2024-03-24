@@ -9,10 +9,7 @@
 
 // use rug::Rational;
 
-use rug::{
-    ops::{DivRounding, Pow},
-    Float, Integer, Rational,
-};
+use rug::{Float, Integer, Rational};
 
 #[derive(Debug, Default, Clone)]
 pub struct Bernoulli {

@@ -1,4 +1,4 @@
-use where_in_pi::{dec::chudnovsky, pi_hex};
+use where_in_pi::{pi_hex, pi_hex_alt};
 
 fn main() {
     // for i in 0..10 {
@@ -6,11 +6,15 @@ fn main() {
     //     println!("{pi}");
     // }
     let start = std::time::Instant::now();
-    let pi = pi_hex(000_000_000, 4);
-    // let pi = chudnovsky(10_000_000);
+    let d = 000_000_000;
+    let precision = 8366;
+    let pi = pi_hex(d, precision);
+    let test = pi_hex_alt(d, precision);
     let elapsed = start.elapsed();
-    println!("{pi:X}");
+    println!("{pi:X}\n\n{test:X}\n\n{}\n", pi == test);
     println!("Elapsed: {}", elapsed.as_secs());
+
+    // let pi = chudnovsky(10_000_000);
     // let start = std::time::Instant::now();
     // let mut b = Bernoulli::default();
     // for n in (0..=60).step_by(2) {

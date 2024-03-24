@@ -1,9 +1,6 @@
-use where_in_pi::{pi_hex, pi_hex_alt};
+use where_in_pi::pi_hex;
 
 fn main() {
-    let d = 000_000_000;
-    let precision = 8366;
-    let pi = pi_hex(d, precision);
-    let test = pi_hex_alt(d, precision);
-    println!("{pi:X}\n\n{test:X}\n\n{}\n", pi == test);
+    let pi = pi_hex(000_000_000, 0_010_000);
+    println!("{pi:X}");
 }

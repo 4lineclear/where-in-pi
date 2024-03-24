@@ -1,6 +1,11 @@
+use std::i128;
+use std::u64;
+
 use rand::seq::IteratorRandom;
 use rand::thread_rng;
 
+use rayon::iter::IndexedParallelIterator;
+use rayon::iter::IntoParallelIterator;
 use rayon::iter::IntoParallelRefIterator;
 use rayon::iter::ParallelIterator;
 
@@ -8,65 +13,58 @@ use rug::ops::Pow;
 use rug::Float;
 use rug::Integer;
 
+pub mod dec;
+
 /// A component of calculating a digit of pi
-pub fn series(d: i64, j: u8, prec_float: u32) -> Float {
+pub fn series(d: u64, j: u8, prec_float: u32) -> Float {
     macro_rules! float {
         ($f:expr) => {
             Float::with_val(prec_float, $f)
         };
     }
-
     let to_d = (0..=d)
         .map(|k| -> Float {
             // (16^(d - k) % (8 * k + j)) / (8 * k + j)
-            let denom = 8 * k + j as i64;
+            let denom = 8 * k + j as u64;
             let numer = float!(Integer::from(16)
                 .pow_mod(&(d - k).into(), &denom.into())
                 .unwrap());
-            let denom = float!(denom);
             numer / denom
         })
-        .reduce(|l, r| l + r)
-        .unwrap_or(float!(0));
+        .fold(float!(0), std::ops::Add::add);
 
-    // NOTE: Do not use parallelism here.
-    // For some reason, it messes up the precision
     let epsilon = float!(2).pow(-(prec_float as i64));
-    let after_d = ((d + 1)..=i64::MAX)
+    let after_d = ((d + 1)..=u64::MAX)
         .map(|k| {
             // 16^(d - k) / (8 * k + j)
-            let numer = float!(16).pow(d - k);
-            let denom = float!(8 * k + j as i64);
+            let numer = float!(16).pow(-((k - d) as i64));
+            let denom = 8 * k + j as u64;
             numer / denom
         })
         .take_while(|f| f.clone().abs() > epsilon)
-        .fold(float!(0), |acc, next| acc + next);
+        .fold(float!(0), std::ops::Add::add);
 
     to_d.fract() + after_d.fract()
 }
 
 /// Calculates whats need to calculate pi
-///
-/// Doesn't fully calculate pi to allow for precision to be set later
-pub fn pi_hex(d: i64, precision: u8) -> Integer {
-    assert!(d >= 0);
+pub fn pi_hex(d: u64, precision: u8) -> Integer {
+    // NOTE: precision * 10 intead of precision * 8 to ensure accuracy
     let precision = precision as u32;
-    let prec_float = if precision < 7 { 53 } else { precision * 8 };
+    let prec_float = if precision < 8 { 80 } else { precision * 10 };
 
-    let mut s1 = None;
-    let mut s2 = None;
-    let mut s3 = None;
-    let mut s4 = None;
-
-    rayon::scope(|s| {
-        s.spawn(|_| s1 = Some(series(d, 1, prec_float) * 4.0));
-        s.spawn(|_| s2 = Some(series(d, 4, prec_float) * 2.0));
-        s.spawn(|_| s3 = Some(series(d, 5, prec_float)));
-        s.spawn(|_| s4 = Some(series(d, 6, prec_float)));
-    });
-
-    let mut pi: Float = s1.unwrap() - s2.unwrap() - s3.unwrap() - s4.unwrap();
-
+    let mut s: Vec<_> = [(1, 4), (4, 2), (5, -1), (6, -1)]
+        .into_par_iter()
+        .map(|(j, m)| (j, series(d, j, prec_float) * m))
+        .collect();
+    // NOTE:
+    // Ensure results remain deterministic since
+    // we are working with floats and parallelism at once
+    s.sort_unstable_by_key(|n| n.0);
+    let mut pi = s
+        .into_iter()
+        .map(|s| s.1)
+        .fold(Float::new(prec_float), std::ops::Add::add);
     pi = if pi < 0.0 {
         pi.fract() + 1.0
     } else if pi > 1.0 {
@@ -78,6 +76,7 @@ pub fn pi_hex(d: i64, precision: u8) -> Integer {
     let mut pi_hex = Integer::from(0);
     for i in 0..precision {
         pi *= 16.0;
+        // 4* as each hex digit is 4 bits
         pi_hex +=
             pi.to_integer_round(rug::float::Round::Down).unwrap().0 << (4 * (precision - i - 1));
         pi = pi.fract();

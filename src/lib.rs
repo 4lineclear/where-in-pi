@@ -122,12 +122,12 @@ pub fn pi_hex(d: u64, precision: u32) -> Integer {
 pub fn check_precision_quick(
     check_start: i64,
     check_end: i64,
-    pi: impl Send + Sync + Fn(i64, u8) -> Integer,
+    pi: impl Send + Sync + Fn(i64, u32) -> Integer,
 ) {
     assert!(check_start >= 0);
     assert!(check_end > check_start);
     // Maximum check
-    let mut size = 255;
+    let mut size = 1000;
 
     let mut left = 0;
     let mut right = size;

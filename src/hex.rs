@@ -10,7 +10,7 @@ use rug::Float;
 use rug::Integer;
 
 /// A component of calculating a digit of pi
-pub fn series(d: u64, j: u8, prec_float: u32) -> Float {
+pub fn series(d: u32, j: u8, prec_float: u32) -> Float {
     macro_rules! float {
         ($f:expr) => {
             Float::with_val(prec_float, $f)
@@ -19,7 +19,7 @@ pub fn series(d: u64, j: u8, prec_float: u32) -> Float {
     let to_d = (0..=d)
         .map(|k| -> Float {
             // (16^(d - k) % (8 * k + j)) / (8 * k + j)
-            let denom = 8 * k + j as u64;
+            let denom = 8 * k + j as u32;
             let numer = float!(Integer::from(16)
                 .pow_mod(&(d - k).into(), &denom.into())
                 .unwrap());
@@ -28,11 +28,11 @@ pub fn series(d: u64, j: u8, prec_float: u32) -> Float {
         .fold(float!(0), std::ops::Add::add);
 
     let epsilon = float!(2).pow(-(prec_float as i64));
-    let after_d = ((d + 1)..=u64::MAX)
+    let after_d = ((d + 1)..=u32::MAX)
         .map(|k| {
             // 16^(d - k) / (8 * k + j)
             let numer = float!(16).pow(-((k - d) as i64));
-            let denom = 8 * k + j as u64;
+            let denom = 8 * k + j as u32;
             numer / denom
         })
         .take_while(|f| f.clone().abs() > epsilon)
@@ -42,7 +42,7 @@ pub fn series(d: u64, j: u8, prec_float: u32) -> Float {
 }
 
 /// Calculates whats need to calculate pi
-pub fn pi_hex(d: u64, precision: u32) -> Integer {
+pub fn pi_hex(d: u32, precision: u32) -> Integer {
     let prec_float = if precision < 8 { 64 } else { precision * 8 };
     let d = d.saturating_sub(1);
 

@@ -9,10 +9,10 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     let mut g = c.benchmark_group("Large pi");
     g.sample_size(10);
     g.bench_function("par", |b| {
-        b.iter(|| black_box(where_in_pi::chudnovsky_parallel(1_000_000)))
+        b.iter(|| black_box(where_in_pi::chudnovsky_parallel(3_000_000)))
     });
     g.bench_function("not", |b| {
-        b.iter(|| black_box(where_in_pi::chudnovsky(1_000_000)))
+        b.iter(|| black_box(where_in_pi::chudnovsky(3_000_000)))
     });
 }
 

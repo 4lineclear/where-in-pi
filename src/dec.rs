@@ -59,8 +59,10 @@ pub fn binary_split_parallel(a: i128, b: i128) -> (Integer, Integer, Integer) {
         rab = pab.clone() * (545140134 * a + 13591409);
     } else {
         let m = (a + b) / 2;
-        let ((pam, qam, ram), (pmb, qmb, rmb)) =
-            rayon::join(|| binary_split(a, m), || binary_split(m, b));
+        let ((pam, qam, ram), (pmb, qmb, rmb)) = rayon::join(
+            || binary_split_parallel(a, m),
+            || binary_split_parallel(m, b),
+        );
         pab = &pam * pmb;
         qab = qam * &qmb;
         rab = qmb * ram + pam * rmb;
@@ -87,25 +89,15 @@ pub fn binary_split(a: i128, b: i128) -> (Integer, Integer, Integer) {
 }
 
 pub fn chudnovsky_iterative(n: u32) -> Float {
-    macro_rules! float {
-        ($val:expr) => {
-            Float::with_val(n * 14 * 4, $val)
-        };
-    }
     assert!(n >= 2, "n >= 2 only");
     let (_p1n, q1n, r1n) = binary_split_iterative(1, n);
-    (float!(426880) * float!(10005).sqrt() * q1n.clone()) / (Integer::from(13591409) * q1n + r1n)
+    (426880 * Float::with_val(n * 14 * 4, 10005).sqrt() * &q1n) / (13591409 * q1n + r1n)
 }
 
 pub fn chudnovsky(n: u32) -> Float {
-    macro_rules! float {
-        ($val:expr) => {
-            Float::with_val(n * 14 * 4, $val)
-        };
-    }
     assert!(n >= 2, "n >= 2 only");
     let (_p1n, q1n, r1n) = binary_split_parallel(1, n as i128);
-    (426880 * float!(10005).sqrt() * &q1n) / (13591409 * q1n + r1n)
+    (426880 * Float::with_val(n * 14 * 4, 10005).sqrt() * &q1n) / (13591409 * q1n + r1n)
 }
 
 pub fn chudnovsky_parallel(n: u32) -> Float {

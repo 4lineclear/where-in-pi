@@ -1,24 +1,12 @@
 // use where_in_pi::chudnovsky;
 
 fn main() {
-    if let Some((n, control, test)) = (3..=10_000)
-        .map(|n| {
-            (
-                n,
-                where_in_pi::binary_split(1, n as i128),
-                where_in_pi::split_empty(1, n),
-            )
-        })
-        .inspect(|(i, ..)| println!("{i}"))
-        .find(|(_, test, control)| test != control)
-    {
-        println!("{n}\n{test:#?}\n{control:#?}");
-    }
+    where_in_pi::binary_split_iterative(1, 3_000_000);
     // let a = 1;
     // let b = 10;
     //
     // let control = where_in_pi::binary_split(a, b);
-    // let test = where_in_pi::split_empty(a as u32, b as u32);
+    // let test = where_in_pi::binary_split_iterative(a as u32, b as u32);
     // println!("{control:?}\n\n{test:?}");
     // let a = 1;
     // let b = 10;

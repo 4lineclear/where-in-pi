@@ -5,67 +5,52 @@
 //! https://mathworld.wolfram.com/Digit-ExtractionAlgorithm.html
 //!
 
-// pub fn bernoulli() {}
+use std::sync::Arc;
 
-// use rug::Rational;
+use dashmap::DashMap;
+use rug::{ops::Pow, Float, Integer};
 
-use rug::{Float, Integer};
-
-pub fn binary_split_iterative(a: u32, b: u32) -> (Integer, Integer, Integer) {
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    enum Kind {
-        Before(u32, u32),
-        After(u32, u32),
-    }
-    use Kind::*;
-
-    let mut vec = vec![Before(a, b)];
-    let mut calcs = Vec::new();
-
-    while let Some(kind) = vec.pop() {
-        let (a, b) = match kind {
-            Before(a, b) | After(a, b) => (a, b),
-        };
-
-        if b == a + 1 {
-            let a = a as i128;
-            let pab = Integer::from(-(6 * a - 5) * (2 * a - 1) * (6 * a - 1));
-            let qab = Integer::from(10_939_058_860_032_000i64) * a.pow(3);
-            let rab = pab.clone() * (545140134 * a + 13591409);
-            calcs.push((pab, qab, rab));
-        } else if matches!(kind, After(..)) {
-            let (pmb, qmb, rmb) = calcs.pop().unwrap();
-            let (pam, qam, ram) = calcs.pop().unwrap();
-            let pab = &pam * pmb;
-            let qab = qam * &qmb;
-            let rab = qmb * ram + pam * rmb;
-            calcs.push((pab, qab, rab));
-        } else {
-            let m = (a + b) / 2;
-            vec.push(After(a, b));
-            vec.push(Before(m, b));
-            vec.push(Before(a, m));
-        }
-    }
-    calcs.remove(0)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ContextKey {
+    /// Recursive, non bottom level case
+    Norm(i128, i128),
+    /// Base case
+    Base(i128),
 }
 
-pub fn binary_split_parallel(a: i128, b: i128) -> (Integer, Integer, Integer) {
+pub type ContextValue = (Integer, Integer, Integer);
+
+pub type Context = DashMap<ContextKey, ContextValue>;
+
+pub fn split_context(a: i128, b: i128, context: Arc<Context>) -> (Integer, Integer, Integer) {
     let (pab, qab, rab);
     if b == a + 1 {
+        if let Some(r) = context.get(&ContextKey::Base(a)) {
+            let (pab, qab, rab) = r.clone();
+            return (pab, qab, rab);
+        }
         // With i128::MAX a's maximum is ~1.385 trillion
-        pab = Integer::from(-(6 * a - 5) * (2 * a - 1) * (6 * a - 1));
-        qab = Integer::from(10_939_058_860_032_000i64) * a.pow(3);
+        pab = int(-(6 * a - 5) * (2 * a - 1) * (6 * a - 1));
+        qab = int(10_939_058_860_032_000i64) * a.pow(3);
         rab = pab.clone() * (545140134 * a + 13591409);
+        context.insert(ContextKey::Base(a), (pab.clone(), qab.clone(), rab.clone()));
     } else {
+        if let Some(r) = context.get(&ContextKey::Norm(a, b)) {
+            let (pab, qab, rab) = r.clone();
+            return (pab, qab, rab);
+        }
         let m = (a + b) / 2;
         let ((pam, qam, ram), (pmb, qmb, rmb)) = rayon::join(
-            || binary_split_parallel(a, m),
-            || binary_split_parallel(m, b),
+            || split_context(a, m, context.clone()),
+            || split_context(m, b, context.clone()),
         );
         pab = &pam * pmb;
         qab = qam * &qmb;
         rab = qmb * ram + pam * rmb;
+        context.insert(
+            ContextKey::Norm(a, b),
+            (pab.clone(), qab.clone(), rab.clone()),
+        );
     }
     (pab, qab, rab)
 }
@@ -74,13 +59,13 @@ pub fn binary_split(a: i128, b: i128) -> (Integer, Integer, Integer) {
     let (pab, qab, rab);
     if b == a + 1 {
         // With i128::MAX a's maximum is ~1.385 trillion
-        pab = Integer::from(-(6 * a - 5) * (2 * a - 1) * (6 * a - 1));
-        qab = Integer::from(10_939_058_860_032_000i64) * a.pow(3);
+        pab = int(-(6 * a - 5) * (2 * a - 1) * (6 * a - 1));
+        qab = int(10_939_058_860_032_000i64) * a.pow(3);
         rab = pab.clone() * (545140134 * a + 13591409);
     } else {
         let m = (a + b) / 2;
-        let (pam, qam, ram) = binary_split(a, m);
-        let (pmb, qmb, rmb) = binary_split(m, b);
+        let ((pam, qam, ram), (pmb, qmb, rmb)) =
+            rayon::join(|| binary_split(a, m), || binary_split(m, b));
         pab = &pam * pmb;
         qab = qam * &qmb;
         rab = qmb * ram + pam * rmb;
@@ -88,42 +73,46 @@ pub fn binary_split(a: i128, b: i128) -> (Integer, Integer, Integer) {
     (pab, qab, rab)
 }
 
-pub fn chudnovsky_iterative(n: u32) -> Float {
+pub fn chudnovsky_float(n: u32) -> Float {
+    // NOTE:
+    // consider returning an integer shifted left 14n * 4 times
+    // also maybe lower from 4 to log_2(10)
+    // set precision of log_2(10) = 14n
     assert!(n >= 2, "n >= 2 only");
-    let (_p1n, q1n, r1n) = binary_split_iterative(1, n);
-    (426880 * Float::with_val(n * 14 * 4, 10005).sqrt() * &q1n) / (13591409 * q1n + r1n)
-}
-
-pub fn chudnovsky(n: u32) -> Float {
-    assert!(n >= 2, "n >= 2 only");
-    let (_p1n, q1n, r1n) = binary_split_parallel(1, n as i128);
-    (426880 * Float::with_val(n * 14 * 4, 10005).sqrt() * &q1n) / (13591409 * q1n + r1n)
-}
-
-pub fn chudnovsky_parallel(n: u32) -> Float {
-    macro_rules! float {
-        ($val:expr) => {
-            Float::with_val(n * 14 * 4, $val)
-        };
-    }
-    assert!(n >= 2, "n >= 2 only");
-    let (_p1n, q1n, r1n) = binary_split_parallel(1, n as i128);
-    let q2n = q1n.clone();
-    let (numer, denom) = rayon::join(
-        || (426880 * float!(10005).sqrt() * q2n),
-        || (13591409 * q1n + r1n),
+    let (root, (_p1n, q1n, r1n)) = rayon::join(
+        || Float::with_val(n * 14 * 4, 10005).sqrt(),
+        || binary_split(1, n as i128),
     );
-    numer / denom
+    (426880 * root * &q1n) / (13591409 * q1n + r1n)
+}
+
+/// Chudnovsky algorith returning an integer
+pub fn chudnovsky_integer(n: u32) -> Integer {
+    assert!(n >= 2, "n >= 2 only");
+    // root = √(10005 * 10^2(n * 14 + 1) )
+    let (root, (_p1n, q1n, r1n)) = rayon::join(
+        || (int(10).pow(2 * (n * 14 + 1)) * 10005u32).sqrt(),
+        || binary_split(1, n as i128),
+    );
+    (426880 * root * &q1n) / (13591409 * q1n + r1n)
+}
+
+/// Shorthand for [`Integer::from`]
+#[inline(always)]
+pub fn int(int: impl Into<Integer>) -> Integer {
+    int.into()
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{chudnovsky, chudnovsky_iterative};
+    use std::sync::Arc;
+
+    use crate::{binary_split, chudnovsky_float, chudnovsky_integer, split_context, Context};
 
     #[test]
     fn one_million() {
         let control = &include_str!("../pi.txt")[..=1_000_001]; // cutoff non digit chars
-        let test = chudnovsky(72_000).to_string(); // 72_000 * 14 > 1,000,000
+        let test = chudnovsky_float(72_000).to_string(); // 72_000 * 14 > 1,000,000
         control
             .chars()
             .zip(test.chars())
@@ -136,12 +125,12 @@ mod tests {
             });
     }
     #[test]
-    fn one_million_iterative() {
-        let control = &include_str!("../pi.txt")[..=1_000_001]; // cutoff non digit chars
-        let test = chudnovsky_iterative(72_000).to_string(); // 72_000 * 14 > 1,000,000
+    fn one_million_integer() {
+        let control = &include_str!("../pi.txt")[2..=1_000_001]; // cutoff non digit chars
+        let test = chudnovsky_integer(72_000).to_string(); // 72_000 * 14 > 1,000,000
         control
             .chars()
-            .zip(test.chars())
+            .zip(test[1..].chars())
             .enumerate()
             .for_each(|(i, (pi, test))| {
                 assert!(
@@ -151,9 +140,10 @@ mod tests {
             });
     }
     #[test]
-    fn iterative_vs_recursive() {
-        for (n, test, control) in (3..=1_000).map(|n| (n, chudnovsky(n), chudnovsky_iterative(n))) {
-            assert!(test == control, "{n}\n{test:#?}\n{control:#?}")
-        }
+    fn context() {
+        let context = Arc::new(Context::new());
+        (3..=100)
+            .map(|n| (binary_split(1, n), split_context(1, n, context.clone())))
+            .for_each(|(control, test)| assert_eq!(control, test));
     }
 }

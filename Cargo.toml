@@ -9,6 +9,8 @@ edition = "2021"
 rug = "*"
 rayon = "*"
 rand = "*"
+dashmap = "*"
+
 
 [dev-dependencies]
 criterion = { version = "0.4", features = ["html_reports"] }

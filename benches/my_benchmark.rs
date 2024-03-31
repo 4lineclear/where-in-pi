@@ -79,14 +79,6 @@ pub fn split_par_vs_not(c: &mut Criterion) {
             });
         });
     });
-    b.bench_function("ctx custom", move |b| {
-        let context = where_in_pi::C2::default();
-        b.iter(|| {
-            series.iter().for_each(|&n| {
-                black_box(where_in_pi::sc_2(1, black_box(n), &context));
-            });
-        });
-    });
     b.bench_function("norm", move |b| {
         b.iter(|| {
             series.iter().for_each(|&n| {

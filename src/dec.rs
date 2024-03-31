@@ -15,107 +15,6 @@ pub type ContextValue = (Integer, Integer, Integer);
 
 pub type Context = DashMap<ContextKey, ContextValue, ahash::RandomState>;
 
-#[derive(Debug, Clone)]
-pub struct IContext {
-    pub inner: std::collections::HashMap<ContextKey, ContextValue>,
-    pub write_buffer: Vec<(ContextKey, ContextValue)>,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct VContext {
-    inner: Vec<Vec<ContextValue>>,
-}
-
-impl VContext {
-    #[inline]
-    fn grow(&mut self, b: u32) {
-        let size = (b as usize * 2 - 3).saturating_sub(self.inner.len());
-        self.inner.extend(std::iter::repeat(Vec::new()).take(size));
-    }
-    #[inline]
-    fn grow_at(&mut self, a: u32, b: u32) {
-        self.grow(b);
-        self.inner[b as usize - 1].extend(
-            std::iter::repeat((Integer::new(), Integer::new(), Integer::new())).take(a as usize),
-        );
-    }
-    pub fn get(&self, a: u32, b: u32) -> &ContextValue {
-        &self.inner[a as usize][b as usize]
-    }
-    pub fn insert(&mut self, a: u32, b: u32, value: ContextValue) {
-        self.grow_at(a, b);
-        self.inner[b as usize - 1][a as usize - 1] = value;
-    }
-}
-
-pub fn split_v2(a: u32, b: u32, context: &mut HashMap<ContextKey, ContextValue>) {
-    fn inner(
-        a: u32,
-        b: u32,
-        context: &HashMap<ContextKey, ContextValue>,
-        write_buffer: &boxcar::Vec<(ContextKey, ContextValue)>,
-    ) {
-        let key = (a, b);
-        if context.contains_key(&key) {
-            return;
-        }
-        let (pab, qab, rab);
-
-        if b == a + 1 {
-            let a = a as i128;
-            // With i128::MAX a's maximum is ~1.385 trillion
-            pab = int(-(6 * a - 5) * (2 * a - 1) * (6 * a - 1));
-            qab = int(10_939_058_860_032_000i64) * a.pow(3);
-            rab = pab.clone() * (545140134 * a + 13591409);
-        } else {
-            let m = (a + b) / 2;
-            rayon::join(
-                || inner(a, m, context, write_buffer),
-                || inner(m, b, context, write_buffer),
-            );
-            let (pam, qam, ram) = &*context.get(&(a, m)).unwrap();
-            let (pmb, qmb, rmb) = &*context.get(&(m, b)).unwrap();
-
-            pab = pam.clone() * pmb;
-            qab = qam.clone() * qmb;
-            rab = qmb.clone() * ram + pam * rmb;
-        }
-        write_buffer.push(((a, b), (pab, qab, rab)));
-    }
-    let buf = boxcar::Vec::new();
-    inner(a, b, context, &buf);
-    context.extend(buf.into_iter());
-}
-
-pub fn split_indexed<'a>(a: u32, b: u32, context: &'a Context) {
-    let key = (a, b);
-    if context.contains_key(&key) {
-        return;
-    }
-    let (pab, qab, rab);
-
-    if b == a + 1 {
-        let a = a as i128;
-        // With i128::MAX a's maximum is ~1.385 trillion
-        pab = int(-(6 * a - 5) * (2 * a - 1) * (6 * a - 1));
-        qab = int(10_939_058_860_032_000i64) * a.pow(3);
-        rab = pab.clone() * (545140134 * a + 13591409);
-    } else {
-        let m = (a + b) / 2;
-        rayon::join(
-            || split_indexed(a, m, context),
-            || split_indexed(m, b, context),
-        );
-        let (pam, qam, ram) = &*context.get(&(a, m)).unwrap();
-        let (pmb, qmb, rmb) = &*context.get(&(m, b)).unwrap();
-
-        pab = pam.clone() * pmb;
-        qab = qam.clone() * qmb;
-        rab = qmb.clone() * ram + pam * rmb;
-    }
-    context.insert(key, (pab, qab, rab));
-}
-
 pub fn split_context(a: u32, b: u32, context: &Context) -> (Integer, Integer, Integer) {
     let (pab, qab, rab);
     let key = (a, b);
@@ -209,8 +108,11 @@ pub fn int(int: impl Into<Integer>) -> Integer {
 mod tests {
     use std::sync::Arc;
 
+    use ahash::HashMap;
+
     use crate::{
-        binary_split, chudnovsky_float, chudnovsky_integer, split_context, split_indexed, Context,
+        binary_split, chudnovsky_float, chudnovsky_integer, split_context, split_indexed, split_v2,
+        Context,
     };
 
     #[test]
@@ -257,9 +159,23 @@ mod tests {
             .map(|n| {
                 (binary_split(1, n), {
                     split_indexed(1, n, &context);
-                    (1, n)
+                    context.get(&(1, n)).unwrap().clone()
                 })
             })
-            .for_each(|(control, test)| assert_eq!(&control, &*context.get(&test).unwrap()));
+            .for_each(|(control, test)| assert_eq!(control, test));
+    }
+    #[test]
+    fn context_v2() {
+        let mut context = HashMap::default();
+        (3..=100)
+            .map(|n| {
+                (binary_split(1, n), {
+                    split_v2(1, n, &mut context);
+                    context.get(&(1, n)).expect(&format!("{context:?}")).clone()
+                })
+            })
+            .for_each(|(control, test)| {
+                assert_eq!(control, test, "Control: {control:?}\nTest: {test:?}")
+            });
     }
 }

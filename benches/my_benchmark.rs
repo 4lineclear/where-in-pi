@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use ahash::{HashMap, HashMapExt};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
@@ -79,38 +77,6 @@ pub fn split_par_vs_not(c: &mut Criterion) {
             let context = where_in_pi::Context::default();
             series.iter().for_each(|&n| {
                 black_box(where_in_pi::split_context(1, black_box(n), &context));
-            });
-        });
-    });
-    b.bench_function("par indexed", move |b| {
-        let context = where_in_pi::Context::default();
-        b.iter(|| {
-            series.iter().for_each(|&n| {
-                black_box(where_in_pi::split_indexed(1, black_box(n), &context));
-            });
-        });
-    });
-    b.bench_function("par indexed clean", move |b| {
-        b.iter(|| {
-            let context = where_in_pi::Context::default();
-            series.iter().for_each(|&n| {
-                black_box(where_in_pi::split_indexed(1, black_box(n), &context));
-            });
-        });
-    });
-    b.bench_function("par v2", move |b| {
-        let mut context = HashMap::new();
-        b.iter(|| {
-            series.iter().for_each(|&n| {
-                black_box(where_in_pi::split_v2(1, black_box(n), &mut context));
-            });
-        });
-    });
-    b.bench_function("par v2 clean", move |b| {
-        b.iter(|| {
-            let mut context = HashMap::new();
-            series.iter().for_each(|&n| {
-                black_box(where_in_pi::split_v2(1, black_box(n), &mut context));
             });
         });
     });

@@ -10,6 +10,8 @@ rug = "*"
 rayon = "*"
 rand = "*"
 dashmap = "*"
+ahash = "*"
+boxcar = "*"
 
 
 [dev-dependencies]

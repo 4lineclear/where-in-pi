@@ -1,7 +1,10 @@
-use std::sync::Arc;
+use where_in_pi::int;
 
 fn main() {
-    let context = Arc::new(where_in_pi::Context::new());
-    let output = where_in_pi::split_context(1, 10, context.clone());
-    println!("{output:#?}\n\n{context:#?}");
+    let mut ctx = where_in_pi::VContext::default();
+    println!("{ctx:#?}");
+    ctx.insert(1, 3, (int(1), int(1), int(1)));
+    // for splits in (3..=10).map(|n| where_in_pi::split_empty(1, n)) {
+    //     println!("{splits:#?}\n{}", splits.len());
+    // }
 }

@@ -11,6 +11,7 @@ rayon = "*"
 rand = "*"
 dashmap = "*"
 ahash = "*"
+indicatif = { version = "*", features = [ "rayon" ] }
 
 
 [dev-dependencies]

@@ -6,7 +6,14 @@
 //!
 
 use dashmap::DashMap;
+use indicatif::{MultiProgress, ParallelProgressIterator, ProgressBar};
+use rayon::iter::{
+    IndexedParallelIterator, IntoParallelIterator, ParallelBridge, ParallelIterator,
+};
 use rug::{ops::Pow, Float, Integer};
+
+#[cfg(test)]
+mod tests;
 
 pub type ContextKey = (u32, u32);
 
@@ -77,6 +84,27 @@ pub fn split_empty(a: u32, b: u32) -> Vec<(u32, u32)> {
     splits
 }
 
+pub fn deduce_splits(start: u32, end: u32, step: u32) -> DashMap<(u32, u32), u32> {
+    let splits = DashMap::new();
+    let prog = MultiProgress::new();
+    let progress_main = ProgressBar::new(((end - start) / step) as u64);
+    prog.add(progress_main.clone());
+
+    (start..=end)
+        .step_by(step as usize)
+        .par_bridge()
+        .map(|b| (b, split_empty(1, b).into_par_iter()))
+        .progress_with(progress_main)
+        .for_each(|(_, s)| {
+            let progress = ProgressBar::new(s.len() as u64);
+            s.progress_with(progress.clone()).for_each(|ab| {
+                *splits.entry(ab).or_insert(0) += 1;
+            });
+            prog.remove(&progress);
+        });
+    splits
+}
+
 pub fn chudnovsky_float(n: u32) -> Float {
     // NOTE:
     // consider returning an integer shifted left 14n * 4 times
@@ -105,47 +133,4 @@ pub fn chudnovsky_integer(n: u32) -> Integer {
 #[inline(always)]
 pub fn int(int: impl Into<Integer>) -> Integer {
     int.into()
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::{binary_split, chudnovsky_float, chudnovsky_integer, split_context, Context};
-
-    #[test]
-    fn one_million() {
-        let control = &include_str!("../pi.txt")[..=1_000_001]; // cutoff non digit chars
-        let test = chudnovsky_float(72_000).to_string(); // 72_000 * 14 > 1,000,000
-        control
-            .chars()
-            .zip(test.chars())
-            .enumerate()
-            .for_each(|(i, (pi, test))| {
-                assert!(
-                    pi == test,
-                    "pi_n != test_n at index {i}, pi_n={pi}, test_n={test}"
-                );
-            });
-    }
-    #[test]
-    fn one_million_integer() {
-        let control = &include_str!("../pi.txt")[2..=1_000_001]; // cutoff non digit chars
-        let test = chudnovsky_integer(72_000).to_string(); // 72_000 * 14 > 1,000,000
-        control
-            .chars()
-            .zip(test[1..].chars())
-            .enumerate()
-            .for_each(|(i, (pi, test))| {
-                assert!(
-                    pi == test,
-                    "pi_n != test_n at index {i}, pi_n={pi}, test_n={test}"
-                );
-            });
-    }
-    #[test]
-    fn context() {
-        let context = Context::new();
-        (3..=100)
-            .map(|n| (binary_split(1, n), split_context(1, n, &context)))
-            .for_each(|(control, test)| assert_eq!(control, test));
-    }
 }

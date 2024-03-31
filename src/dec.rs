@@ -5,17 +5,105 @@
 //! https://mathworld.wolfram.com/Digit-ExtractionAlgorithm.html
 //!
 
-use ahash::HashMap;
+use std::{u128, u64};
+
 use dashmap::DashMap;
 use rug::{ops::Pow, Float, Integer};
+
+use self::hash::RSu64;
 
 pub type ContextKey = (u32, u32);
 
 pub type ContextValue = (Integer, Integer, Integer);
 
-pub type Context = DashMap<ContextKey, ContextValue, ahash::RandomState>;
+pub type Context<RS> = DashMap<ContextKey, ContextValue, RS>;
 
-pub fn split_context(a: u32, b: u32, context: &Context) -> (Integer, Integer, Integer) {
+#[derive(Eq, PartialEq, Default)]
+pub struct CK2 {
+    pub a: u32,
+    pub b: u32,
+}
+
+pub type C2 = DashMap<CK2, ContextValue>;
+
+impl std::hash::Hash for CK2 {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        let a = self.a as u64;
+        let b = self.b as u64;
+        state.write_u64((a << 32) + b);
+    }
+}
+
+pub mod hash {
+    use std::{cell::Cell, hash::Hasher};
+
+    #[derive(Clone, Copy, Debug, Default)]
+    pub struct RSu64;
+
+    impl std::hash::BuildHasher for RSu64 {
+        type Hasher = Hashu64;
+        fn build_hasher(&self) -> Self::Hasher {
+            Hashu64::default()
+        }
+    }
+
+    /// only works for u64
+    #[derive(Default)]
+    pub struct Hashu64(Cell<Option<u64>>);
+
+    impl Hasher for Hashu64 {
+        fn finish(&self) -> u64 {
+            let ret = self.0.get().unwrap();
+            self.0.set(None);
+            ret
+        }
+        fn write_u64(&mut self, i: u64) {
+            self.0.set(Some(i));
+        }
+        fn write(&mut self, _: &[u8]) {}
+        fn write_u8(&mut self, _: u8) {}
+        fn write_u16(&mut self, _: u16) {}
+        fn write_u32(&mut self, _: u32) {}
+        fn write_u128(&mut self, _: u128) {}
+        fn write_usize(&mut self, _: usize) {}
+        fn write_i8(&mut self, _: i8) {}
+        fn write_i16(&mut self, _: i16) {}
+        fn write_i32(&mut self, _: i32) {}
+        fn write_i64(&mut self, _: i64) {}
+        fn write_i128(&mut self, _: i128) {}
+        fn write_isize(&mut self, _: isize) {}
+    }
+}
+
+pub fn sc_2(a: u32, b: u32, context: &C2) -> (Integer, Integer, Integer) {
+    let (pab, qab, rab);
+    let key = CK2 { a, b };
+    if let Some(r) = context.get(&key) {
+        return r.clone();
+    }
+    if b == a + 1 {
+        let a = a as i128;
+        // With i128::MAX a's maximum is ~1.385 trillion
+        pab = int(-(6 * a - 5) * (2 * a - 1) * (6 * a - 1));
+        qab = int(10_939_058_860_032_000i64) * a.pow(3);
+        rab = pab.clone() * (545140134 * a + 13591409);
+    } else {
+        let m = (a + b) / 2;
+        let ((pam, qam, ram), (pmb, qmb, rmb)) =
+            rayon::join(|| sc_2(a, m, &context), || sc_2(m, b, &context));
+        pab = &pam * pmb;
+        qab = qam * &qmb;
+        rab = qmb * ram + pam * rmb;
+    }
+    context.insert(key, (pab.clone(), qab.clone(), rab.clone()));
+    (pab, qab, rab)
+}
+
+pub fn split_context<RS: std::hash::BuildHasher + Clone + Send + Sync>(
+    a: u32,
+    b: u32,
+    context: &Context<RS>,
+) -> (Integer, Integer, Integer) {
     let (pab, qab, rab);
     let key = (a, b);
     if let Some(r) = context.get(&key) {
@@ -106,13 +194,8 @@ pub fn int(int: impl Into<Integer>) -> Integer {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
-    use ahash::HashMap;
-
     use crate::{
-        binary_split, chudnovsky_float, chudnovsky_integer, split_context, split_indexed, split_v2,
-        Context,
+        binary_split, chudnovsky_float, chudnovsky_integer, sc_2, split_context, Context, C2,
     };
 
     #[test]
@@ -147,35 +230,16 @@ mod tests {
     }
     #[test]
     fn context() {
-        let context = Arc::new(Context::default());
+        let context = Context::new();
         (3..=100)
             .map(|n| (binary_split(1, n), split_context(1, n, &context)))
             .for_each(|(control, test)| assert_eq!(control, test));
     }
     #[test]
-    fn context_index() {
-        let context = Context::default();
+    fn context_custom() {
+        let context = C2::default();
         (3..=100)
-            .map(|n| {
-                (binary_split(1, n), {
-                    split_indexed(1, n, &context);
-                    context.get(&(1, n)).unwrap().clone()
-                })
-            })
+            .map(|n| (binary_split(1, n), sc_2(1, n, &context)))
             .for_each(|(control, test)| assert_eq!(control, test));
-    }
-    #[test]
-    fn context_v2() {
-        let mut context = HashMap::default();
-        (3..=100)
-            .map(|n| {
-                (binary_split(1, n), {
-                    split_v2(1, n, &mut context);
-                    context.get(&(1, n)).expect(&format!("{context:?}")).clone()
-                })
-            })
-            .for_each(|(control, test)| {
-                assert_eq!(control, test, "Control: {control:?}\nTest: {test:?}")
-            });
     }
 }

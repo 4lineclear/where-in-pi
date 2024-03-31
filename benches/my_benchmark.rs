@@ -1,4 +1,3 @@
-use ahash::{HashMap, HashMapExt};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 pub fn criterion_benchmark(c: &mut Criterion) {
@@ -44,7 +43,7 @@ pub fn float_vs_integer(c: &mut Criterion) {
 pub fn split_ctx_vs_not(c: &mut Criterion) {
     let mut b = c.benchmark_group("ctx vs not");
     b.bench_function("ctx 3..3000", |b| {
-        let context = where_in_pi::Context::default();
+        let context = where_in_pi::Context::new();
         b.iter(|| {
             for i in (3..3000).step_by(3) {
                 black_box(where_in_pi::split_context(1, i, &context));
@@ -64,19 +63,27 @@ pub fn split_par_vs_not(c: &mut Criterion) {
     let series = [9_000, 18_000, 36_000, 72_000, 144_000, 288_000];
 
     let mut b = c.benchmark_group("split test");
-    b.bench_function("par", move |b| {
-        let context = where_in_pi::Context::default();
+    b.bench_function("ctx default", move |b| {
+        let context = where_in_pi::Context::new();
         b.iter(|| {
             series.iter().for_each(|&n| {
                 black_box(where_in_pi::split_context(1, black_box(n), &context));
             });
         });
     });
-    b.bench_function("par clean", move |b| {
+    b.bench_function("ctx ahash", move |b| {
+        let context = where_in_pi::Context::with_hasher(ahash::RandomState::new());
         b.iter(|| {
-            let context = where_in_pi::Context::default();
             series.iter().for_each(|&n| {
                 black_box(where_in_pi::split_context(1, black_box(n), &context));
+            });
+        });
+    });
+    b.bench_function("ctx custom", move |b| {
+        let context = where_in_pi::C2::default();
+        b.iter(|| {
+            series.iter().for_each(|&n| {
+                black_box(where_in_pi::sc_2(1, black_box(n), &context));
             });
         });
     });

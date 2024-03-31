@@ -5,7 +5,7 @@
 //! https://mathworld.wolfram.com/Digit-ExtractionAlgorithm.html
 //!
 
-use dashmap::DashMap;
+use dashmap::{DashMap, DashSet};
 use indicatif::{MultiProgress, ParallelProgressIterator, ProgressBar};
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, ParallelBridge, ParallelIterator,
@@ -70,7 +70,7 @@ pub fn binary_split(a: u32, b: u32) -> (Integer, Integer, Integer) {
     (pab, qab, rab)
 }
 
-pub fn split_empty(a: u32, b: u32) -> Vec<(u32, u32)> {
+pub fn gen_splits(a: u32, b: u32) -> Vec<(u32, u32)> {
     fn inner(a: u32, b: u32, splits: &mut Vec<(u32, u32)>) {
         splits.push((a, b));
         if b != a + 1 {
@@ -84,6 +84,44 @@ pub fn split_empty(a: u32, b: u32) -> Vec<(u32, u32)> {
     splits
 }
 
+pub fn gen_splits_v2(a: u32, b: u32) -> DashSet<(u32, u32)> {
+    fn inner(a: u32, b: u32, splits: &DashSet<(u32, u32)>) {
+        if splits.insert((a, b)) {
+            return;
+        }
+        if b != a + 1 {
+            let m = (a + b) / 2;
+            rayon::join(|| inner(a, m, splits), || inner(m, b, splits));
+        }
+    }
+    let mut splits = DashSet::with_capacity(b as usize * 2 - 3);
+    inner(a, b, &mut splits);
+    splits
+}
+
+pub fn deduce_splits_v2(start: u32, end: u32, step: u32) -> DashMap<(u32, u32), u32> {
+    let splits = DashMap::new();
+    let prog = MultiProgress::new();
+    let progress_main = ProgressBar::new(((end - start) / step) as u64);
+    prog.add(progress_main.clone());
+
+    (start..=end)
+        .step_by(step as usize)
+        .par_bridge()
+        .map(|b| (b, gen_splits_v2(1, b)))
+        .progress_with(progress_main)
+        .for_each(|(_, s)| {
+            let progress = ProgressBar::new(s.len() as u64);
+            s.into_par_iter()
+                .progress_with(progress.clone())
+                .for_each(|ab| {
+                    *splits.entry(ab).or_insert(0) += 1;
+                });
+            prog.remove(&progress);
+        });
+    splits
+}
+
 pub fn deduce_splits(start: u32, end: u32, step: u32) -> DashMap<(u32, u32), u32> {
     let splits = DashMap::new();
     let prog = MultiProgress::new();
@@ -93,7 +131,7 @@ pub fn deduce_splits(start: u32, end: u32, step: u32) -> DashMap<(u32, u32), u32
     (start..=end)
         .step_by(step as usize)
         .par_bridge()
-        .map(|b| (b, split_empty(1, b).into_par_iter()))
+        .map(|b| (b, gen_splits(1, b).into_par_iter()))
         .progress_with(progress_main)
         .for_each(|(_, s)| {
             let progress = ProgressBar::new(s.len() as u64);

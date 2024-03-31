@@ -1,10 +1,13 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use dashmap::DashMap;
+use rayon::iter::{IntoParallelIterator, ParallelBridge, ParallelIterator};
 
 pub fn criterion_benchmark(c: &mut Criterion) {
     // float_vs_integer(c);
     // standard(c);
     // split_ctx_vs_not(c);
-    split_par_vs_not(c);
+    // split_par_vs_not(c);
+    gen_splits(c);
 }
 
 pub fn standard(c: &mut Criterion) {
@@ -24,12 +27,6 @@ pub fn standard(c: &mut Criterion) {
 pub fn float_vs_integer(c: &mut Criterion) {
     let integer = |n| black_box(where_in_pi::chudnovsky_integer(black_box(n)));
     let float = |n| black_box(where_in_pi::chudnovsky_float(black_box(n)));
-
-    // let n = 3_000_000;
-    // let mut b = c.benchmark_group(format!("float vs integer {n}"));
-    // b.sample_size(10);
-    // b.bench_function(format!("integer"), |b| b.iter(|| integer(n)));
-    // b.bench_function(format!("float"), |b| b.iter(|| float(n)));
 
     let mut n = 3;
     while n <= 300_000 {
@@ -84,6 +81,44 @@ pub fn split_par_vs_not(c: &mut Criterion) {
             series.iter().for_each(|&n| {
                 black_box(where_in_pi::binary_split(1, black_box(n)));
             });
+        });
+    });
+}
+
+pub fn gen_splits(c: &mut Criterion) {
+    let mut b = c.benchmark_group("gen splits");
+    let start = 1000;
+    let end = 10000;
+    let step = 1;
+
+    b.bench_function("v1", move |b| {
+        let splits = DashMap::new();
+        b.iter(|| {
+            (start..=end)
+                .rev()
+                .step_by(step)
+                .par_bridge()
+                .map(|b| (b, where_in_pi::gen_splits(1, b).into_par_iter()))
+                .for_each(|(_, s)| {
+                    s.for_each(|ab| {
+                        *splits.entry(ab).or_insert(0) += 1;
+                    });
+                });
+        });
+    });
+    b.bench_function("v2", move |b| {
+        let splits = DashMap::new();
+        b.iter(|| {
+            (start..=end)
+                .rev()
+                .step_by(step)
+                .par_bridge()
+                .map(|b| (b, where_in_pi::gen_splits_v2(1, b).into_par_iter()))
+                .for_each(|(_, s)| {
+                    s.for_each(|ab| {
+                        *splits.entry(ab).or_insert(0) += 1;
+                    });
+                });
         });
     });
 }

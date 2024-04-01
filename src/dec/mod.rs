@@ -125,22 +125,28 @@ pub fn gen_splits_v2(a: u32, b: u32) -> dashmap::DashSet<(u32, u32)> {
 // TODO: Create custom parallel impl
 
 pub fn deduce_splits_v5(start: u32, end: u32, step: u32) -> DashMap<(u32, u32), u32> {
-    let splits = DashMap::new();
-    let Ok(batch_size) = std::thread::available_parallelism() else {
+    let Ok(threads) = std::thread::available_parallelism().map(usize::from) else {
         panic!("Unable to get available threads")
     };
-    let steps: Vec<_> = (start..end).step_by(step as usize).collect();
 
-    for runs in steps.windows(batch_size.into()) {
-        std::thread::scope(|s| {
-            for &b in runs {
-                let splits = std::sync::Arc::new(&splits);
-                s.spawn(move || {
-                    gen_splits_v4(1, b, &splits);
-                });
-            }
-        });
-    }
+    let splits = DashMap::new();
+    let mut b = (start..end).step_by(step as usize);
+    let (tx, rx) = std::sync::mpsc::channel::<()>();
+    (0..threads).try_for_each(|_| tx.send(())).unwrap();
+
+    std::thread::scope(|s| {
+        while let Ok(_) = rx.recv() {
+            let Some(b) = b.next() else {
+                break;
+            };
+            let splits = std::sync::Arc::new(&splits);
+            let tx = tx.clone();
+            s.spawn(move || {
+                gen_splits_v4(1, b, &splits);
+                tx.send(()).unwrap();
+            });
+        }
+    });
     splits
 }
 

@@ -150,5 +150,6 @@ pub fn deduce_splits(c: &mut Criterion) {
         b.iter(|| black_box(where_in_pi::deduce_splits_v4(start, end, step, false)));
     });
 }
+
 criterion_group!(benches, criterion_benchmark);
 criterion_main!(benches);

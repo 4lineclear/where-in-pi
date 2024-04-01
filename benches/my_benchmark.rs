@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use dashmap::DashMap;
-use rayon::iter::{IntoParallelIterator, ParallelBridge, ParallelIterator};
+use rayon::iter::{ParallelBridge, ParallelIterator};
 
 pub fn criterion_benchmark(c: &mut Criterion) {
     // float_vs_integer(c);
@@ -91,19 +91,14 @@ pub fn gen_splits(c: &mut Criterion) {
     let end = 10000;
     let step = 1;
 
-    b.bench_function("v1", move |b| {
+    b.bench_function("v3", move |b| {
         let splits = DashMap::new();
         b.iter(|| {
             (start..=end)
                 .rev()
                 .step_by(step)
                 .par_bridge()
-                .map(|b| (b, where_in_pi::gen_splits(1, b).into_par_iter()))
-                .for_each(|(_, s)| {
-                    s.for_each(|ab| {
-                        *splits.entry(ab).or_insert(0) += 1;
-                    });
-                });
+                .for_each(|b| where_in_pi::gen_splits(1, b, &splits));
         });
     });
     b.bench_function("v2", move |b| {
@@ -113,7 +108,14 @@ pub fn gen_splits(c: &mut Criterion) {
                 .rev()
                 .step_by(step)
                 .par_bridge()
-                .map(|b| (b, where_in_pi::gen_splits_v2(1, b).into_par_iter()))
+                .map(|b| {
+                    (
+                        b,
+                        rayon::iter::IntoParallelIterator::into_par_iter(
+                            where_in_pi::gen_splits_v2(1, b),
+                        ),
+                    )
+                })
                 .for_each(|(_, s)| {
                     s.for_each(|ab| {
                         *splits.entry(ab).or_insert(0) += 1;

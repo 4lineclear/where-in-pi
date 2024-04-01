@@ -5,9 +5,11 @@
 //! https://mathworld.wolfram.com/Digit-ExtractionAlgorithm.html
 //!
 
+use std::num::NonZeroUsize;
+
 use dashmap::DashMap;
-use indicatif::{ParallelProgressIterator, ProgressBar};
-use rayon::iter::{ParallelBridge, ParallelIterator};
+use indicatif::ParallelProgressIterator;
+use rayon::iter::{IntoParallelIterator, ParallelBridge, ParallelExtend, ParallelIterator};
 use rug::{ops::Pow, Float, Integer};
 
 #[cfg(test)]
@@ -68,7 +70,25 @@ pub fn binary_split(a: u32, b: u32) -> (Integer, Integer, Integer) {
     (pab, qab, rab)
 }
 
-pub fn gen_splits(a: u32, b: u32, splits: &DashMap<ContextKey, u32>) {
+pub fn gen_splits_v4(a: u32, b: u32, splits: &DashMap<ContextKey, u32>) {
+    let mut stack = vec![(a, b)];
+    while let Some(k) = stack.pop() {
+        if let Some(mut split) = splits.get_mut(&k) {
+            *split += 1;
+            continue;
+        }
+        splits.insert(k, 1);
+
+        let (a, b) = k;
+        if b != a + 1 {
+            let m = (a + b) / 2;
+            stack.push((a, m));
+            stack.push((m, b));
+        }
+    }
+}
+
+pub fn gen_splits_v3(a: u32, b: u32, splits: &DashMap<ContextKey, u32>) {
     let key = (a, b);
 
     if let Some(mut v) = splits.get_mut(&key) {
@@ -78,7 +98,10 @@ pub fn gen_splits(a: u32, b: u32, splits: &DashMap<ContextKey, u32>) {
 
     if b != a + 1 {
         let m = (a + b) / 2;
-        rayon::join(|| gen_splits(a, m, splits), || gen_splits(m, b, splits));
+        rayon::join(
+            || gen_splits_v3(a, m, splits),
+            || gen_splits_v3(m, b, splits),
+        );
     }
 
     splits.insert(key, 1);
@@ -99,15 +122,77 @@ pub fn gen_splits_v2(a: u32, b: u32) -> dashmap::DashSet<(u32, u32)> {
     splits
 }
 
-pub fn deduce_splits(start: u32, end: u32, step: u32) -> DashMap<(u32, u32), u32> {
-    let splits = DashMap::new();
-    let progress_main = ProgressBar::new(((end - start) / step) as u64);
+// TODO: Create custom parallel impl
 
-    (start..=end)
-        .step_by(step as usize)
-        .par_bridge()
-        .progress_with(progress_main)
-        .for_each(|b| gen_splits(1, b, &splits));
+pub fn deduce_splits_v5(start: u32, end: u32, step: u32) -> DashMap<(u32, u32), u32> {
+    let splits = DashMap::new();
+    let Ok(batch_size) = std::thread::available_parallelism() else {
+        panic!("Unable to get available threads")
+    };
+    let steps: Vec<_> = (start..end).step_by(step as usize).collect();
+
+    for runs in steps.windows(batch_size.into()) {
+        std::thread::scope(|s| {
+            for &b in runs {
+                let splits = std::sync::Arc::new(&splits);
+                s.spawn(move || {
+                    gen_splits_v4(1, b, &splits);
+                });
+            }
+        });
+    }
+    splits
+}
+
+pub fn deduce_splits_v4(
+    start: u32,
+    end: u32,
+    step: u32,
+    progress: bool,
+) -> DashMap<(u32, u32), u32> {
+    let splits = DashMap::new();
+    if progress {
+        (start..=end)
+            // .step_by(step as usize)
+            // .rev()
+            // .progress_count(((end - start) / step) as u64)
+            .step_by(step as usize)
+            .par_bridge()
+            .progress_count(((end - start) / step) as u64)
+            // .par_bridge()
+            .for_each(|b| gen_splits_v4(1, b, &splits));
+    } else {
+        (start..=end)
+            .step_by(step as usize)
+            .par_bridge()
+            .for_each(|b| gen_splits_v4(1, b, &splits));
+    }
+    splits
+}
+
+pub fn deduce_splits_v3(
+    start: u32,
+    end: u32,
+    step: u32,
+    progress: bool,
+) -> DashMap<(u32, u32), u32> {
+    let splits = DashMap::new();
+    if progress {
+        (start..=end)
+            // .step_by(step as usize)
+            // .rev()
+            // .progress_count(((end - start) / step) as u64)
+            .step_by(step as usize)
+            .par_bridge()
+            .progress_count(((end - start) / step) as u64)
+            // .par_bridge()
+            .for_each(|b| gen_splits_v3(1, b, &splits));
+    } else {
+        (start..=end)
+            .step_by(step as usize)
+            .par_bridge()
+            .for_each(|b| gen_splits_v3(1, b, &splits));
+    }
     splits
 }
 

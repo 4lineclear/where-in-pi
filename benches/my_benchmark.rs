@@ -7,7 +7,8 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     // standard(c);
     // split_ctx_vs_not(c);
     // split_par_vs_not(c);
-    gen_splits(c);
+    // gen_splits(c);
+    deduce_splits(c);
 }
 
 pub fn standard(c: &mut Criterion) {
@@ -87,9 +88,20 @@ pub fn split_par_vs_not(c: &mut Criterion) {
 
 pub fn gen_splits(c: &mut Criterion) {
     let mut b = c.benchmark_group("gen splits");
-    let start = 1000;
-    let end = 10000;
-    let step = 1;
+    let start = 10000;
+    let end = 100000;
+    let step = 10;
+
+    b.bench_function("v4", move |b| {
+        let splits = DashMap::new();
+        b.iter(|| {
+            (start..=end)
+                .rev()
+                .step_by(step)
+                .for_each(|b| where_in_pi::gen_splits_v4(1, b, &splits));
+        });
+        black_box(splits);
+    });
 
     b.bench_function("v3", move |b| {
         let splits = DashMap::new();
@@ -98,9 +110,11 @@ pub fn gen_splits(c: &mut Criterion) {
                 .rev()
                 .step_by(step)
                 .par_bridge()
-                .for_each(|b| where_in_pi::gen_splits(1, b, &splits));
+                .for_each(|b| where_in_pi::gen_splits_v3(1, b, &splits));
         });
+        black_box(splits);
     });
+
     b.bench_function("v2", move |b| {
         let splits = DashMap::new();
         b.iter(|| {
@@ -109,21 +123,32 @@ pub fn gen_splits(c: &mut Criterion) {
                 .step_by(step)
                 .par_bridge()
                 .map(|b| {
-                    (
-                        b,
-                        rayon::iter::IntoParallelIterator::into_par_iter(
-                            where_in_pi::gen_splits_v2(1, b),
-                        ),
-                    )
+                    rayon::iter::IntoParallelIterator::into_par_iter(where_in_pi::gen_splits_v2(
+                        1, b,
+                    ))
                 })
-                .for_each(|(_, s)| {
+                .for_each(|s| {
                     s.for_each(|ab| {
                         *splits.entry(ab).or_insert(0) += 1;
                     });
                 });
         });
+        black_box(splits);
     });
 }
 
+pub fn deduce_splits(c: &mut Criterion) {
+    let mut b = c.benchmark_group("deduce splits");
+    let start = 10000;
+    let end = 100000;
+    let step = 10;
+
+    b.bench_function("v5", move |b| {
+        b.iter(|| black_box(where_in_pi::deduce_splits_v5(start, end, step)));
+    });
+    b.bench_function("v4", move |b| {
+        b.iter(|| black_box(where_in_pi::deduce_splits_v4(start, end, step, false)));
+    });
+}
 criterion_group!(benches, criterion_benchmark);
 criterion_main!(benches);

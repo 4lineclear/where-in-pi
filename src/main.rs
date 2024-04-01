@@ -1,5 +1,5 @@
 fn main() {
-    let splits = where_in_pi::deduce_splits(10000, 100000, 1);
+    let splits = where_in_pi::deduce_splits_v4(10000, 100000, 1, true);
 
     let mut splits: Vec<_> = splits.into_iter().collect();
     splits.sort_unstable_by(|s1, s2| {

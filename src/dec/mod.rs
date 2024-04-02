@@ -13,17 +13,15 @@ use rug::{ops::Pow, Float, Integer};
 #[cfg(test)]
 mod tests;
 
-pub type ContextKey = (u32, u32);
+pub type Split = (u32, u32);
 
-pub type ContextValue = (Integer, Integer, Integer);
-
-pub type Context<RS> = DashMap<ContextKey, ContextValue, RS>;
+pub type PQR = (Integer, Integer, Integer);
 
 pub fn split_context<RS: std::hash::BuildHasher + Clone + Send + Sync>(
     a: u32,
     b: u32,
-    context: &Context<RS>,
-) -> (Integer, Integer, Integer) {
+    context: &DashMap<Split, PQR, RS>,
+) -> PQR {
     let (pab, qab, rab);
     let key = (a, b);
     if let Some(r) = context.get(&key) {
@@ -49,7 +47,7 @@ pub fn split_context<RS: std::hash::BuildHasher + Clone + Send + Sync>(
     (pab, qab, rab)
 }
 
-pub fn binary_split(a: u32, b: u32) -> (Integer, Integer, Integer) {
+pub fn binary_split(a: u32, b: u32) -> PQR {
     let (pab, qab, rab);
     if b == a + 1 {
         let a = a as i128;
@@ -70,7 +68,7 @@ pub fn binary_split(a: u32, b: u32) -> (Integer, Integer, Integer) {
 
 // TODO: create testing for gen_splits & deduce_splits
 
-pub fn gen_splits(a: u32, b: u32, splits: &DashMap<ContextKey, u32>) {
+pub fn gen_splits(a: u32, b: u32, splits: &DashMap<Split, u32>) {
     let mut stack = vec![(a, b)];
     while let Some(k) = stack.pop() {
         if let Some(mut split) = splits.get_mut(&k) {
@@ -88,7 +86,7 @@ pub fn gen_splits(a: u32, b: u32, splits: &DashMap<ContextKey, u32>) {
     }
 }
 
-pub fn deduce_splits(start: u32, end: u32, step: u32, progress: bool) -> DashMap<(u32, u32), u32> {
+pub fn deduce_splits(start: u32, end: u32, step: u32, progress: bool) -> DashMap<Split, u32> {
     let splits = DashMap::new();
     if progress {
         (start..=end)

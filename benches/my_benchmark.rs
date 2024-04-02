@@ -40,7 +40,7 @@ pub fn float_vs_integer(c: &mut Criterion) {
 pub fn split_ctx_vs_not(c: &mut Criterion) {
     let mut b = c.benchmark_group("ctx vs not");
     b.bench_function("ctx 3..3000", |b| {
-        let context = where_in_pi::Context::new();
+        let context = DashMap::new();
         b.iter(|| {
             for i in (3..3000).step_by(3) {
                 black_box(where_in_pi::split_context(1, i, &context));
@@ -61,7 +61,7 @@ pub fn split_par_vs_not(c: &mut Criterion) {
 
     let mut b = c.benchmark_group("split test");
     b.bench_function("ctx default", move |b| {
-        let context = where_in_pi::Context::new();
+        let context = DashMap::new();
         b.iter(|| {
             series.iter().for_each(|&n| {
                 black_box(where_in_pi::split_context(1, black_box(n), &context));
@@ -69,7 +69,7 @@ pub fn split_par_vs_not(c: &mut Criterion) {
         });
     });
     b.bench_function("ctx ahash", move |b| {
-        let context = where_in_pi::Context::with_hasher(ahash::RandomState::new());
+        let context = DashMap::with_hasher(ahash::RandomState::new());
         b.iter(|| {
             series.iter().for_each(|&n| {
                 black_box(where_in_pi::split_context(1, black_box(n), &context));

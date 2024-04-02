@@ -1,4 +1,6 @@
-use crate::{binary_split, chudnovsky_float, chudnovsky_integer, split_context, Context};
+use dashmap::DashMap;
+
+use crate::{binary_split, chudnovsky_float, chudnovsky_integer, split_context};
 
 const PI_CONTROL: &str = include_str!("../../pi.txt");
 #[test]
@@ -36,7 +38,7 @@ fn one_million_integer() {
 }
 #[test]
 fn context() {
-    let context = Context::new();
+    let context = DashMap::new();
     (3..=100)
         .map(|n| (binary_split(1, n), split_context(1, n, &context)))
         .for_each(|(control, test)| assert_eq!(control, test));

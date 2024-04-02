@@ -141,11 +141,12 @@ pub fn deduce_splits(c: &mut Criterion) {
     let mut b = c.benchmark_group("deduce splits");
     let start = 10000;
     let end = 100000;
-    let step = 10;
+    let step = 1;
 
     b.bench_function("v5", move |b| {
         b.iter(|| black_box(where_in_pi::deduce_splits_v5(start, end, step)));
     });
+
     b.bench_function("v4", move |b| {
         b.iter(|| black_box(where_in_pi::deduce_splits_v4(start, end, step, false)));
     });

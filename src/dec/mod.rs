@@ -5,11 +5,9 @@
 //! https://mathworld.wolfram.com/Digit-ExtractionAlgorithm.html
 //!
 
-use std::num::NonZeroUsize;
-
 use dashmap::DashMap;
 use indicatif::ParallelProgressIterator;
-use rayon::iter::{IntoParallelIterator, ParallelBridge, ParallelExtend, ParallelIterator};
+use rayon::iter::{ParallelBridge, ParallelIterator};
 use rug::{ops::Pow, Float, Integer};
 
 #[cfg(test)]
@@ -128,25 +126,41 @@ pub fn deduce_splits_v5(start: u32, end: u32, step: u32) -> DashMap<(u32, u32), 
     let Ok(threads) = std::thread::available_parallelism().map(usize::from) else {
         panic!("Unable to get available threads")
     };
-
     let splits = DashMap::new();
-    let mut b = (start..end).step_by(step as usize);
-    let (tx, rx) = std::sync::mpsc::channel::<()>();
-    (0..threads).try_for_each(|_| tx.send(())).unwrap();
-
     std::thread::scope(|s| {
-        while let Ok(_) = rx.recv() {
-            let Some(b) = b.next() else {
-                break;
-            };
-            let splits = std::sync::Arc::new(&splits);
-            let tx = tx.clone();
+        let threads = (0..threads).map(|_| {
+            let splits = &splits;
+            let (tx, rx) = std::sync::mpsc::channel::<u32>();
             s.spawn(move || {
-                gen_splits_v4(1, b, &splits);
-                tx.send(()).unwrap();
+                while let Ok(b) = rx.recv() {
+                    gen_splits_v4(1, b, &splits);
+                }
             });
-        }
+            tx
+        });
+        let mut threads = threads.clone().chain(threads.rev()).cycle();
+        (start..end)
+            .step_by(step as usize)
+            .rev()
+            .try_for_each(|b| threads.next().unwrap().send(b))
+            .unwrap();
     });
+    // let (tx, rx) = std::sync::mpsc::channel::<()>();
+    // (0..threads).try_for_each(|_| tx.send(())).unwrap();
+    //
+    // std::thread::scope(|s| {
+    //     while let Ok(_) = rx.recv() {
+    //         let Some(b) = b.next() else {
+    //             break;
+    //         };
+    //         let splits = std::sync::Arc::new(&splits);
+    //         let tx = tx.clone();
+    //         s.spawn(move || {
+    //             gen_splits_v4(1, b, &splits);
+    //             tx.send(()).unwrap();
+    //         });
+    //     }
+    // });
     splits
 }
 
@@ -159,13 +173,9 @@ pub fn deduce_splits_v4(
     let splits = DashMap::new();
     if progress {
         (start..=end)
-            // .step_by(step as usize)
-            // .rev()
-            // .progress_count(((end - start) / step) as u64)
             .step_by(step as usize)
             .par_bridge()
             .progress_count(((end - start) / step) as u64)
-            // .par_bridge()
             .for_each(|b| gen_splits_v4(1, b, &splits));
     } else {
         (start..=end)

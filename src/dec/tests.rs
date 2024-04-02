@@ -1,9 +1,4 @@
-use dashmap::DashMap;
-
-use crate::{
-    binary_split, chudnovsky_float, chudnovsky_integer, deduce_splits_v3, deduce_splits_v4,
-    gen_splits_v3, gen_splits_v4, split_context, Context,
-};
+use crate::{binary_split, chudnovsky_float, chudnovsky_integer, split_context, Context};
 
 const PI_CONTROL: &str = include_str!("../../pi.txt");
 #[test]
@@ -45,60 +40,4 @@ fn context() {
     (3..=100)
         .map(|n| (binary_split(1, n), split_context(1, n, &context)))
         .for_each(|(control, test)| assert_eq!(control, test));
-}
-#[test]
-fn gen_split() {
-    let a = 1;
-    let b = 100000;
-
-    let splits_v3 = DashMap::new();
-    let splits_v4 = DashMap::new();
-
-    gen_splits_v3(a, b, &splits_v3);
-    gen_splits_v4(a, b, &splits_v4);
-
-    assert_eq!(
-        splits_v3
-            .into_iter()
-            .collect::<std::collections::HashMap<_, _>>(),
-        splits_v4
-            .into_iter()
-            .collect::<std::collections::HashMap<_, _>>(),
-    );
-}
-#[test]
-fn deduce_split() {
-    let start = 10000;
-    let end = 100000;
-    let step = 1;
-
-    let (splits_v3, splits_v4) = rayon::join(
-        || deduce_splits_v3(start, end, step, false),
-        || deduce_splits_v4(start, end, step, false),
-    );
-
-    let (mut v3_not_in_v4, mut v4_not_in_v3) = rayon::join(
-        || {
-            splits_v3
-                .iter()
-                .filter(|v3| !splits_v4.contains_key(v3.key()))
-                .map(|r| (r.key().clone(), r.value().clone()))
-                .peekable()
-        },
-        || {
-            splits_v4
-                .iter()
-                .filter(|v4| !splits_v3.contains_key(v4.key()))
-                .map(|r| (r.key().clone(), r.value().clone()))
-                .peekable()
-        },
-    );
-
-    if v3_not_in_v4.peek().is_some() || v4_not_in_v3.peek().is_some() {
-        panic!(
-            "{:?} {:?}",
-            v3_not_in_v4.collect::<Vec<_>>(),
-            v4_not_in_v3.collect::<Vec<_>>()
-        );
-    }
 }

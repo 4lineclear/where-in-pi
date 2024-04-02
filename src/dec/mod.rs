@@ -68,7 +68,9 @@ pub fn binary_split(a: u32, b: u32) -> (Integer, Integer, Integer) {
     (pab, qab, rab)
 }
 
-pub fn gen_splits_v4(a: u32, b: u32, splits: &DashMap<ContextKey, u32>) {
+// TODO: create testing for gen_splits & deduce_splits
+
+pub fn gen_splits(a: u32, b: u32, splits: &DashMap<ContextKey, u32>) {
     let mut stack = vec![(a, b)];
     while let Some(k) = stack.pop() {
         if let Some(mut split) = splits.get_mut(&k) {
@@ -86,137 +88,24 @@ pub fn gen_splits_v4(a: u32, b: u32, splits: &DashMap<ContextKey, u32>) {
     }
 }
 
-pub fn gen_splits_v3(a: u32, b: u32, splits: &DashMap<ContextKey, u32>) {
-    let key = (a, b);
-
-    if let Some(mut v) = splits.get_mut(&key) {
-        *v += 1;
-        return;
-    }
-
-    if b != a + 1 {
-        let m = (a + b) / 2;
-        rayon::join(
-            || gen_splits_v3(a, m, splits),
-            || gen_splits_v3(m, b, splits),
-        );
-    }
-
-    splits.insert(key, 1);
-}
-
-pub fn gen_splits_v2(a: u32, b: u32) -> dashmap::DashSet<(u32, u32)> {
-    fn inner(a: u32, b: u32, splits: &dashmap::DashSet<(u32, u32)>) {
-        if splits.insert((a, b)) {
-            return;
-        }
-        if b != a + 1 {
-            let m = (a + b) / 2;
-            rayon::join(|| inner(a, m, splits), || inner(m, b, splits));
-        }
-    }
-    let mut splits = dashmap::DashSet::with_capacity(b as usize * 2 - 3);
-    inner(a, b, &mut splits);
-    splits
-}
-
-// TODO: Create custom parallel impl
-
-pub fn deduce_splits_v5(start: u32, end: u32, step: u32) -> DashMap<(u32, u32), u32> {
-    let Ok(threads) = std::thread::available_parallelism().map(usize::from) else {
-        panic!("Unable to get available threads")
-    };
-    let splits = DashMap::new();
-    std::thread::scope(|s| {
-        let threads = (0..threads).map(|_| {
-            let splits = &splits;
-            let (tx, rx) = std::sync::mpsc::channel::<u32>();
-            s.spawn(move || {
-                while let Ok(b) = rx.recv() {
-                    gen_splits_v4(1, b, &splits);
-                }
-            });
-            tx
-        });
-        let mut threads = threads.clone().chain(threads.rev()).cycle();
-        (start..end)
-            .step_by(step as usize)
-            .rev()
-            .try_for_each(|b| threads.next().unwrap().send(b))
-            .unwrap();
-    });
-    // let (tx, rx) = std::sync::mpsc::channel::<()>();
-    // (0..threads).try_for_each(|_| tx.send(())).unwrap();
-    //
-    // std::thread::scope(|s| {
-    //     while let Ok(_) = rx.recv() {
-    //         let Some(b) = b.next() else {
-    //             break;
-    //         };
-    //         let splits = std::sync::Arc::new(&splits);
-    //         let tx = tx.clone();
-    //         s.spawn(move || {
-    //             gen_splits_v4(1, b, &splits);
-    //             tx.send(()).unwrap();
-    //         });
-    //     }
-    // });
-    splits
-}
-
-pub fn deduce_splits_v4(
-    start: u32,
-    end: u32,
-    step: u32,
-    progress: bool,
-) -> DashMap<(u32, u32), u32> {
+pub fn deduce_splits(start: u32, end: u32, step: u32, progress: bool) -> DashMap<(u32, u32), u32> {
     let splits = DashMap::new();
     if progress {
         (start..=end)
             .step_by(step as usize)
             .par_bridge()
             .progress_count(((end - start) / step) as u64)
-            .for_each(|b| gen_splits_v4(1, b, &splits));
+            .for_each(|b| gen_splits(1, b, &splits));
     } else {
         (start..=end)
             .step_by(step as usize)
             .par_bridge()
-            .for_each(|b| gen_splits_v4(1, b, &splits));
-    }
-    splits
-}
-
-pub fn deduce_splits_v3(
-    start: u32,
-    end: u32,
-    step: u32,
-    progress: bool,
-) -> DashMap<(u32, u32), u32> {
-    let splits = DashMap::new();
-    if progress {
-        (start..=end)
-            // .step_by(step as usize)
-            // .rev()
-            // .progress_count(((end - start) / step) as u64)
-            .step_by(step as usize)
-            .par_bridge()
-            .progress_count(((end - start) / step) as u64)
-            // .par_bridge()
-            .for_each(|b| gen_splits_v3(1, b, &splits));
-    } else {
-        (start..=end)
-            .step_by(step as usize)
-            .par_bridge()
-            .for_each(|b| gen_splits_v3(1, b, &splits));
+            .for_each(|b| gen_splits(1, b, &splits));
     }
     splits
 }
 
 pub fn chudnovsky_float(n: u32) -> Float {
-    // NOTE:
-    // consider returning an integer shifted left 14n * 4 times
-    // also maybe lower from 4 to log_2(10)
-    // set precision of log_2(10) = 14n
     assert!(n >= 2, "n >= 2 only");
     let (root, (_p1n, q1n, r1n)) = rayon::join(
         || Float::with_val(n * 14 * 4, 10005).sqrt(),

@@ -60,6 +60,7 @@ pub fn split_par_vs_not(c: &mut Criterion) {
     let series = [9_000, 18_000, 36_000, 72_000, 144_000, 288_000];
 
     let mut b = c.benchmark_group("split test");
+
     b.bench_function("ctx default", move |b| {
         let context = DashMap::new();
         b.iter(|| {
@@ -97,7 +98,7 @@ pub fn gen_splits(c: &mut Criterion) {
             (start..=end)
                 .rev()
                 .step_by(step)
-                .for_each(|b| where_in_pi::gen_splits(1, b, &splits));
+                .for_each(|b| where_in_pi::gen_splits_v1(1, b, &splits));
         });
         black_box(splits);
     });

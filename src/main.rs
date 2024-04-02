@@ -1,3 +1,5 @@
+use rayon::slice::ParallelSliceMut;
+
 fn main() {
     let start = 10000;
     let end = 100000;
@@ -6,7 +8,7 @@ fn main() {
     let splits = where_in_pi::deduce_splits(start, end, step, progress);
 
     let mut splits: Vec<_> = splits.into_iter().collect();
-    splits.sort_unstable_by(|s1, s2| {
+    splits.par_sort_unstable_by(|s1, s2| {
         use std::cmp::Ordering::*;
         match s1.1.cmp(&s2.1) {
             Equal => s1.0.cmp(&s2.0),

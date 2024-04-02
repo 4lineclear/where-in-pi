@@ -43,3 +43,40 @@ fn context() {
         .map(|n| (binary_split(1, n), split_context(1, n, &context)))
         .for_each(|(control, test)| assert_eq!(control, test));
 }
+
+#[test]
+fn deduce_split() {
+    let start = 10000;
+    let end = 100000;
+    let step = 1;
+
+    let (first, second) = rayon::join(
+        || crate::deduce_splits(start, end, step, false),
+        || crate::deduce_splits(start, end, step, false),
+    );
+
+    let (mut f_not_s, mut s_not_f) = rayon::join(
+        || {
+            first
+                .iter()
+                .filter(|v3| !second.contains_key(v3.key()))
+                .map(|r| (r.key().clone(), r.value().clone()))
+                .peekable()
+        },
+        || {
+            second
+                .iter()
+                .filter(|v4| !first.contains_key(v4.key()))
+                .map(|r| (r.key().clone(), r.value().clone()))
+                .peekable()
+        },
+    );
+
+    if f_not_s.peek().is_some() || s_not_f.peek().is_some() {
+        panic!(
+            "{:?} {:?}",
+            f_not_s.collect::<Vec<_>>(),
+            s_not_f.collect::<Vec<_>>()
+        );
+    }
+}
